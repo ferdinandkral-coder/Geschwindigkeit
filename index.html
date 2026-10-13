@@ -118,6 +118,19 @@ input[type=range]{width:100%;accent-color:var(--acc)}
     </div>
     <div class="hint">Ziel antippen, Objekt möglichst mittig, Abstand mit Maßband/Schritten bestimmen. Der aktuelle Zoom wird herausgerechnet.</div>
 
+    <h3>Neigungssensor</h3>
+    <label for="sensor">Sensorquelle</label>
+    <select id="sensor">
+      <option value="rel">Gyro + Beschleunigung (stabil, empfohlen)</option>
+      <option value="abs">Mit Kompass (absolut)</option>
+    </select>
+    <div class="hint">Der Kompass-Modus wird durch Magnetfelder (Auto, Metall, Magnet-Hülle) oft verfälscht und kann auch die Neigung verschlechtern. Für die Geschwindigkeit wird keine Himmelsrichtung gebraucht.</div>
+    <div class="row" style="margin-top:8px">
+      <button id="tiltCalBtn">Horizont = 0° setzen</button>
+      <button id="tiltResetBtn">Korrektur löschen</button>
+    </div>
+    <div class="hint">Handy auf Stativ/Wasserwaage so ausrichten, dass die Kamera exakt waagerecht zeigt (in der Haltung, in der du misst), dann tippen. Die Anzeige „Kamera-Neigung“ und die Rechnung werden um diesen Fehler korrigiert. In der Infozeile oben siehst du Quelle und Rohwinkel β/γ.</div>
+
     <h3>Objekterkennung</h3>
     <label for="model">KI-Modell</label>
     <select id="model">
@@ -239,7 +252,7 @@ const MODELS = {
 };
 const VISION_VERSIONS = ['1.1.0', '0.10.21'];
 const RES = {'720': [1280, 720], '1080': [1920, 1080], '2160': [3840, 2160]};
-const DEFAULTS = {mode:'size', preset:'car_rear', dim:'w', size:1.8, hcam:1.5, fovBy:{}, win:1.0, cam:'', res:'1080', model:'lite2', thr:0.35, tiles:false, mpct:5};
+const DEFAULTS = {mode:'size', preset:'car_rear', dim:'w', size:1.8, hcam:1.5, fovBy:{}, win:1.0, cam:'', res:'1080', model:'lite2', thr:0.35, tiles:false, mpct:5, sensor:'rel', tiltOff:0};
 let S = Object.assign({}, DEFAULTS);
 try { Object.assign(S, JSON.parse(localStorage.getItem('speedcam-settings-v2') || '{}')); } catch (e) {}
 if (!S.fovBy || typeof S.fovBy !== 'object') S.fovBy = {};
@@ -247,11 +260,16 @@ const saveS = () => { try { localStorage.setItem('speedcam-settings-v2', JSON.st
 
 /* =====================  Sensor (Lage des Handys)  ===================== */
 const oriBuf = [];
-let gotAbs = false, lastOri = null, oriInit = false;
+let gotAbs = false, gotRel = false, oriSrc = null, lastOri = null, oriInit = false, tiltSm = null;
+// Zwei Quellen: 'rel' = Gyro + Beschleunigungssensor (stabil, kein Kompass), 'abs' = mit Magnetometer (kann durch Magnetfelder verfälscht werden).
+// Genutzt wird die bevorzugte Quelle (S.sensor); die andere nur, solange die bevorzugte noch nie Daten geliefert hat.
 function pushOri(e, abs) {
   if (e.alpha == null || e.beta == null || e.gamma == null) return;
-  if (!abs && gotAbs) return;
-  if (abs) gotAbs = true;
+  if (abs) gotAbs = true; else gotRel = true;
+  const want = S.sensor === 'abs';
+  if (!(abs === want || !(want ? gotAbs : gotRel))) return;
+  const src = abs ? 'abs' : 'rel';
+  if (oriSrc !== src) { oriBuf.length = 0; hist = []; oriSrc = src; tiltSm = null; }   // Bezugssysteme nie mischen
   lastOri = {t: e.timeStamp, a: e.alpha, b: e.beta, g: e.gamma};
   oriBuf.push(lastOri);
   if (oriBuf.length > 120) oriBuf.shift();
@@ -283,6 +301,12 @@ function scrAngle() {
   return ((a % 360) + 360) % 360;
 }
 function camElevation(o) { return deg(Math.asin(clamp(-Math.cos(rad(o.b)) * Math.cos(rad(o.g)), -1, 1))); }
+// Angezeigte Neigung: um die Horizont-Kalibrierung korrigiert und leicht geglättet (nur Anzeige, die Messung nutzt Rohwerte)
+function tiltShown(o) {
+  const e = camElevation(o) - S.tiltOff;
+  tiltSm = tiltSm == null ? e : tiltSm + 0.3 * (e - tiltSm);
+  return tiltSm;
+}
 
 /* =====================  Kamera, Zoom, Geometrie  ===================== */
 const video = $('v'), cv = $('c'), ctx = cv.getContext('2d');
@@ -294,12 +318,15 @@ const fovEff = () => deg(2 * Math.atan(Math.tan(rad(fovBase()) / 2) / zoomNow));
 const focalPx = () => (Math.max(vw, vh) / 2) / Math.tan(rad(fovBase()) / 2) * zoomNow;
 
 function rayDev(u, v) {
-  const f = focalPx(), xn = (u - vw / 2) / f, yn = -(v - vh / 2) / f;
+  const f = focalPx(), x = (u - vw / 2) / f, y0 = -(v - vh / 2) / f;
+  // Nick-Korrektur (Horizont-Kalibrierung): Drehung um die waagerechte Bildachse; bei tiltOff = 0 unverändert (0,0,-1)
+  const th = -rad(S.tiltOff), c = Math.cos(th), s = Math.sin(th);
+  const y = y0 * c + s, z = y0 * s - c;
   switch (scrAngle()) {
-    case 90:  return [ yn, -xn, -1];
-    case 180: return [-xn, -yn, -1];
-    case 270: return [-yn,  xn, -1];
-    default:  return [ xn,  yn, -1];
+    case 90:  return [ y, -x, z];
+    case 180: return [-x, -y, z];
+    case 270: return [-y,  x, z];
+    default:  return [ x,  y, z];
   }
 }
 function estimate(box, o) {
@@ -544,9 +571,11 @@ function processFrame(tCap) {
 const f1 = (x, u) => isFinite(x) ? x.toFixed(1) + ' ' + u : '–';
 function updateHud() {
   const o = lastOri;
-  $('tilt').textContent = o ? camElevation(o).toFixed(1) + '°' : 'kein Sensor';
+  const stale = o && performance.now() - o.t > 1000;
+  $('tilt').textContent = !o ? 'kein Sensor' : stale ? 'Sensor steht' : tiltShown(o).toFixed(1) + '°';
   $('info').textContent = vw + '×' + vh + ' · Zoom ' + zoomNow.toFixed(1) + '× · Bildwinkel ' + fovEff().toFixed(0) + '° · Erkennung ' + perfMs.toFixed(0) + ' ms'
-    + (target ? ' · ' + (target.src === 'tpl' ? 'Bild-Tracker' : 'KI') : '');
+    + (target ? ' · ' + (target.src === 'tpl' ? 'Bild-Tracker' : 'KI') : '')
+    + (o ? ' · Sensor ' + (oriSrc === 'abs' ? 'Kompass' : 'Gyro') + ' β' + o.b.toFixed(0) + ' γ' + o.g.toFixed(0) + (S.tiltOff ? ' · Korr. ' + S.tiltOff.toFixed(1) + '°' : '') : '');
   if (!target || !target.P) { $('speed').innerHTML = '– <small>km/h</small>'; ['vh','vv','dist','alt'].forEach(i => $(i).textContent = '–'); return; }
   const P = target.P, ground = S.mode === 'ground';
   $('dist').textContent = f1(Math.hypot(P[0], P[1], P[2]), 'm');
@@ -702,7 +731,7 @@ PRESETS.forEach(p => presetSel.add(new Option(p.name, p.id)));
 function syncUI() {
   $('mode').value = S.mode; presetSel.value = S.preset; $('size').value = S.size; $('dim').value = S.dim;
   $('hcam').value = S.hcam; $('fov').value = (+fovBase()).toFixed(1); $('win').value = S.win; $('winv').textContent = (+S.win).toFixed(1);
-  $('res').value = S.res; $('model').value = S.model; $('thr').value = S.thr; $('thrv').textContent = (+S.thr).toFixed(2);
+  $('sensor').value = S.sensor; $('res').value = S.res; $('model').value = S.model; $('thr').value = S.thr; $('thrv').textContent = (+S.thr).toFixed(2);
   $('tiles').checked = !!S.tiles; $('mpct').value = S.mpct; $('mpctv').textContent = S.mpct;
   $('sizeBox').style.display = S.mode === 'size' ? 'block' : 'none';
 }
@@ -724,6 +753,13 @@ $('model').onchange = async e => {
   try { await loadDetector(S.model); toast('Modell: ' + MODELS[S.model].name); } catch (err) { toast('Modellwechsel fehlgeschlagen: ' + err.message, 0); }
   busy = false;
 };
+$('sensor').onchange = e => { S.sensor = e.target.value; oriBuf.length = 0; oriSrc = null; hist = []; tiltSm = null; saveS(); toast('Sensorquelle: ' + (S.sensor === 'abs' ? 'Kompass' : 'Gyro')); };
+$('tiltCalBtn').onclick = () => {
+  if (!lastOri || performance.now() - lastOri.t > 1000) { toast('Kein Sensorsignal – Bewegungssensoren erlauben'); return; }
+  S.tiltOff = clamp(camElevation(lastOri), -15, 15); tiltSm = null; changed();
+  toast('Horizont kalibriert: Korrektur ' + S.tiltOff.toFixed(1) + '°');
+};
+$('tiltResetBtn').onclick = () => { S.tiltOff = 0; tiltSm = null; changed(); toast('Neigungs-Korrektur gelöscht'); };
 $('thr').oninput = e => { S.thr = parseFloat(e.target.value); $('thrv').textContent = S.thr.toFixed(2); saveS(); };
 $('tiles').onchange = e => { S.tiles = e.target.checked; saveS(); };
 $('mpct').oninput = e => {

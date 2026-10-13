@@ -18,6 +18,17 @@ fahrendes oder fliegendes Objekt erkennt, verfolgt und daraus Entfernung, Höhe 
 - **Objektiv-Wahl:** Auswahl der Rückkameras (Ultraweit/Haupt/Tele) und der Auflösung (HD/Full-HD/4K).
   Der Bildwinkel wird pro Objektiv gespeichert.
 
+## Neigungssensor (Update)
+
+- **Sensorquelle:** Standard ist jetzt *Gyro + Beschleunigung*. Die frühere Kompass-Quelle lässt sich in den
+  Einstellungen wieder wählen, wird aber durch Magnetfelder (Auto, Metall, Magnet-Hülle) oft verfälscht.
+  Eine Himmelsrichtung braucht die Messung nicht.
+- **Anzeige „Kamera-Neigung“** ist leicht geglättet; die Rechnung nutzt weiter die Rohwerte.
+  Bleibt der Sensor stehen, steht dort „Sensor steht“.
+- **Diagnose:** Die Infozeile oben zeigt Quelle und Rohwinkel β/γ.
+- **Horizont = 0° setzen:** Kamera exakt waagerecht ausrichten (Stativ/Wasserwaage, in der späteren Messhaltung),
+  tippen – ein konstanter Neigungsfehler wird danach in Anzeige und Rechnung herausgenommen („Korrektur löschen“ setzt zurück).
+
 ## Veröffentlichen mit GitHub Pages
 
 1. Neues GitHub-Repository anlegen (z. B. `speedcam`).
