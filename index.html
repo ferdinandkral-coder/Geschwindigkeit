@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>SpeedCam – Geschwindigkeit & Höhe per Kamera</title>
+<style>
+:root{--acc:#22d3a0;--warn:#f5a524;--panel:rgba(12,14,18,.95)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:#fff;font:15px/1.35 system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:manipulation}
+#stage{position:fixed;inset:0}
+video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#hud{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top) + 8px) 12px 18px;background:linear-gradient(#000c,#0000);pointer-events:none}
+#speed{font-size:46px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;line-height:1.05}
+#speed small{font-size:18px;color:#cfd8dc;font-weight:500}
+#grid{display:grid;grid-template-columns:repeat(3,auto);gap:2px 16px;justify-content:start;margin-top:6px;font-variant-numeric:tabular-nums}
+#grid b{display:block;font-size:11px;font-weight:500;color:#9aa7ad;text-transform:uppercase;letter-spacing:.04em}
+#grid span{font-size:18px}
+#status{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 76px);text-align:center;font-size:14px;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none}
+#bar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);background:linear-gradient(#0000,#000b)}
+button{font:inherit;color:#fff;background:#243038;border:1px solid #3b4a54;border-radius:12px;padding:12px 18px}
+button.primary{background:var(--acc);color:#04251c;border-color:var(--acc);font-weight:700}
+#startBtn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:20px;padding:18px 30px}
+#panel{position:absolute;left:0;right:0;bottom:0;max-height:78%;overflow:auto;background:var(--panel);border-top:1px solid #3b4a54;border-radius:18px 18px 0 0;padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);display:none}
+#panel.open{display:block}
+#panel h3{margin:14px 0 6px;font-size:13px;color:#9aa7ad;text-transform:uppercase;letter-spacing:.05em}
+#panel h3:first-child{margin-top:0}
+label{display:block;margin:8px 0 3px;font-size:13px;color:#cfd8dc}
+select,input{width:100%;font:inherit;color:#fff;background:#151c21;border:1px solid #3b4a54;border-radius:10px;padding:10px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.hint{font-size:12px;color:#8d9aa1;margin-top:4px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="v" playsinline muted autoplay></video>
+  <canvas id="c"></canvas>
+
+  <div id="hud">
+    <div id="speed">– <small>km/h</small></div>
+    <div id="grid">
+      <div><b>Horizontal</b><span id="vh">–</span></div>
+      <div><b>Vertikal</b><span id="vv">–</span></div>
+      <div><b>Max</b><span id="vmax">–</span></div>
+      <div><b>Entfernung</b><span id="dist">–</span></div>
+      <div><b>Höhe</b><span id="alt">–</span></div>
+      <div><b>Kamera-Neigung</b><span id="tilt">–</span></div>
+    </div>
+  </div>
+
+  <div id="status">Tippe auf „Start“</div>
+  <button id="startBtn" class="primary">Start</button>
+
+  <div id="bar" style="display:none">
+    <button id="settingsBtn">⚙ Einstellungen</button>
+    <button id="resetBtn">Ziel lösen</button>
+  </div>
+
+  <div id="panel">
+    <h3>Messmodus</h3>
+    <label for="mode">Wie wird die Entfernung bestimmt?</label>
+    <select id="mode">
+      <option value="size">Über bekannte Objektgröße (Flug &amp; Fahrzeuge)</option>
+      <option value="ground">Über Kamerahöhe + Boden (nur bodennahe Objekte)</option>
+    </select>
+    <div class="hint">„Größe“: Entfernung = Brennweite × reale Größe ÷ Pixelgröße. „Boden“: Entfernung = Kamerahöhe ÷ tan(Blickwinkel nach unten zur Unterkante).</div>
+
+    <div id="sizeBox">
+      <h3>Objektgröße</h3>
+      <label for="preset">Vorlage</label>
+      <select id="preset"></select>
+      <div class="row">
+        <div><label for="size">Reale Größe (m)</label><input id="size" type="number" step="0.05" min="0.05" inputmode="decimal"></div>
+        <div><label for="dim">Gemessen an</label>
+          <select id="dim"><option value="w">Breite im Bild</option><option value="h">Höhe im Bild</option></select></div>
+      </div>
+      <div class="hint">Je schräger du auf das Objekt blickst, desto kleiner erscheint es im Bild → Entfernung wird überschätzt, Geschwindigkeit ungenau.</div>
+    </div>
+
+    <h3>Kamera</h3>
+    <div class="row">
+      <div><label for="hcam">Kamerahöhe über Boden (m)</label><input id="hcam" type="number" step="0.1" min="0" inputmode="decimal"></div>
+      <div><label for="fov">Bildwinkel lange Seite (°)</label><input id="fov" type="number" step="0.5" min="20" max="120" inputmode="decimal"></div>
+    </div>
+    <label for="calDist">Kalibrieren: Objekt (Größe oben eingestellt) ist gerade ___ m entfernt</label>
+    <div class="row">
+      <input id="calDist" type="number" step="0.5" min="1" inputmode="decimal" placeholder="z. B. 20">
+      <button id="calBtn">Bildwinkel berechnen</button>
+    </div>
+    <div class="hint">Ziel antippen, Objekt möglichst mittig, Abstand mit Maßband/Schritten bestimmen. Das ist die wichtigste Maßnahme für gute Genauigkeit.</div>
+
+    <h3>Glättung</h3>
+    <label for="win">Mess-Zeitfenster: <span id="winv"></span> s</label>
+    <input id="win" type="range" min="0.4" max="2.5" step="0.1">
+    <div class="hint">Länger = ruhiger, aber träger. Für schnelle Objekte kürzer, für ferne/langsame länger.</div>
+
+    <div class="row" style="margin-top:14px">
+      <button id="maxResetBtn">Max zurücksetzen</button>
+      <button id="closeBtn" class="primary">Fertig</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script>
+'use strict';
+/* =====================  Hilfsfunktionen & Einstellungen  ===================== */
+const $ = id => document.getElementById(id);
+const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+
+const PRESETS = [
+  {id:'car_rear',   name:'Auto von vorn/hinten (Breite 1,8 m)',        dim:'w', m:1.8},
+  {id:'car_side',   name:'Auto von der Seite (Länge 4,5 m)',           dim:'w', m:4.5},
+  {id:'truck_rear', name:'LKW von vorn/hinten (Breite 2,5 m)',         dim:'w', m:2.5},
+  {id:'bus_side',   name:'Bus von der Seite (Länge 12 m)',             dim:'w', m:12},
+  {id:'bike_side',  name:'Fahrrad von der Seite (Länge 1,75 m)',       dim:'w', m:1.75},
+  {id:'person',     name:'Person (Körpergröße 1,75 m)',                dim:'h', m:1.75},
+  {id:'airliner',   name:'Verkehrsflugzeug A320 (Spannweite 34 m)',    dim:'w', m:34},
+  {id:'cessna',     name:'Kleinflugzeug Cessna 172 (Spannweite 11 m)', dim:'w', m:11},
+  {id:'drone_s',    name:'Kleine Drohne (Breite 0,3 m)',               dim:'w', m:0.3},
+  {id:'drone_l',    name:'Große Drohne (Breite 0,6 m)',                dim:'w', m:0.6},
+  {id:'gull',       name:'Möwe (Spannweite 1,0 m)',                    dim:'w', m:1.0},
+  {id:'custom',     name:'Eigene Größe …',                             dim:'w', m:1.0}
+];
+const DEFAULTS = {mode:'size', preset:'car_rear', dim:'w', size:1.8, hcam:1.5, fov:70, win:1.0};
+let S = Object.assign({}, DEFAULTS);
+try { Object.assign(S, JSON.parse(localStorage.getItem('speedcam-settings') || '{}')); } catch (e) {}
+const saveS = () => { try { localStorage.setItem('speedcam-settings', JSON.stringify(S)); } catch (e) {} };
+
+/* =====================  Sensor (Lage des Handys)  ===================== */
+// Ringpuffer mit Zeitstempeln, damit wir die Lage zum Aufnahmezeitpunkt des Kamerabilds nehmen können.
+const oriBuf = [];
+let gotAbs = false, lastOri = null;
+function pushOri(e, abs) {
+  if (e.alpha == null || e.beta == null || e.gamma == null) return;
+  if (!abs && gotAbs) return;             // absolute Events haben Vorrang
+  if (abs) gotAbs = true;
+  lastOri = {t: e.timeStamp, a: e.alpha, b: e.beta, g: e.gamma};
+  oriBuf.push(lastOri);
+  if (oriBuf.length > 120) oriBuf.shift();
+}
+function oriAt(t) {
+  if (!oriBuf.length) return null;
+  let best = oriBuf[oriBuf.length - 1], bd = Infinity;
+  for (const o of oriBuf) { const d = Math.abs(o.t - t); if (d < bd) { bd = d; best = o; } }
+  return best;
+}
+// Drehmatrix Gerät → Welt (x=Ost, y=Nord, z=oben), W3C-Konvention Z-X'-Y''
+function rotMat(a, b, g) {
+  const cA = Math.cos(rad(a)), sA = Math.sin(rad(a));
+  const cB = Math.cos(rad(b)), sB = Math.sin(rad(b));
+  const cG = Math.cos(rad(g)), sG = Math.sin(rad(g));
+  return [
+    cA*cG - sA*sB*sG, -cB*sA, cG*sA*sB + cA*sG,
+    cG*sA + cA*sB*sG,  cA*cB, sA*sG - cA*cG*sB,
+    -cB*sG,            sB,    cB*cG
+  ];
+}
+const mul = (R, v) => [
+  R[0]*v[0] + R[1]*v[1] + R[2]*v[2],
+  R[3]*v[0] + R[4]*v[1] + R[5]*v[2],
+  R[6]*v[0] + R[7]*v[1] + R[8]*v[2]
+];
+function scrAngle() {
+  let a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle
+        : (typeof window.orientation === 'number' ? window.orientation : 0);
+  return ((a % 360) + 360) % 360;
+}
+// Neigung der optischen Achse über dem Horizont (°)
+function camElevation(o) { return deg(Math.asin(Math.max(-1, Math.min(1, -Math.cos(rad(o.b)) * Math.cos(rad(o.g)))))); }
+
+/* =====================  Geometrie  ===================== */
+const video = $('v'), cv = $('c'), ctx = cv.getContext('2d');
+let vw = 0, vh = 0;
+const focalPx = () => (Math.max(vw, vh) / 2) / Math.tan(rad(S.fov) / 2);
+
+// Pixel → Strahl im Gerätekoordinatensystem (Kamera blickt entlang -z), Tiefe = 1
+function rayDev(u, v) {
+  const f = focalPx(), xn = (u - vw / 2) / f, yn = -(v - vh / 2) / f;
+  switch (scrAngle()) {
+    case 90:  return [ yn, -xn, -1];
+    case 180: return [-xn, -yn, -1];
+    case 270: return [-yn,  xn, -1];
+    default:  return [ xn,  yn, -1];
+  }
+}
+// Position des Objekts relativ zur Kamera in Weltkoordinaten (Meter) – oder null
+function estimate(box, o) {
+  const [x, y, w, h] = box, R = rotMat(o.a, o.b, o.g);
+  if (S.mode === 'ground') {
+    const r = mul(R, rayDev(x + w / 2, y + h));      // Unterkante der Box = Bodenkontakt
+    if (r[2] > -0.01) return null;                    // Strahl geht nicht nach unten
+    const t = S.hcam / (-r[2]);
+    if (t > 3000) return null;
+    return [r[0] * t, r[1] * t, -S.hcam];
+  }
+  const px = S.dim === 'w' ? w : h;
+  if (px < 4) return null;
+  const Z = focalPx() * S.size / px;                  // Tiefe entlang der optischen Achse
+  const d = rayDev(x + w / 2, y + h / 2);
+  return mul(R, [d[0] * Z, d[1] * Z, d[2] * Z]);
+}
+
+/* =====================  Tracking & Geschwindigkeit  ===================== */
+let model = null, running = false, target = null, hist = [], lastPreds = [], maxKmh = 0;
+
+function velocity(win) {
+  if (hist.length < 4) return null;
+  const tN = hist[hist.length - 1].t;
+  const s = hist.filter(p => tN - p.t <= win * 1000);
+  if (s.length < 4 || s[s.length - 1].t - s[0].t < 250) return null;
+  const tm = s.reduce((a, p) => a + p.t, 0) / s.length;
+  let den = 0; for (const p of s) den += (p.t - tm) ** 2;
+  if (den === 0) return null;
+  const v = [0, 0, 0];
+  for (let k = 0; k < 3; k++) {
+    const pm = s.reduce((a, p) => a + p.P[k], 0) / s.length;
+    let num = 0; for (const p of s) num += (p.t - tm) * (p.P[k] - pm);
+    v[k] = num / den * 1000;                          // m/s
+  }
+  return v;
+}
+const centerOf = b => [b[0] + b[2] / 2, b[1] + b[3] / 2];
+
+function matchTarget(preds, tCap) {
+  const T = target, dt = Math.min(1000, Math.max(0, tCap - T.t));
+  const pc = [T.c[0] + T.v[0] * dt, T.c[1] + T.v[1] * dt];
+  const lim = Math.max(T.box[2], T.box[3]) * 1.2 + 40;
+  let best = null, bd = Infinity;
+  for (const p of preds) {
+    const ratio = (p.box[2] * p.box[3]) / (T.box[2] * T.box[3]);
+    if (ratio < 0.3 || ratio > 3.3) continue;
+    const c = centerOf(p.box), d = Math.hypot(c[0] - pc[0], c[1] - pc[1]);
+    if (d < bd && d < lim) { bd = d; best = p; }
+  }
+  return best;
+}
+
+function handleFrame(preds, tCap) {
+  lastPreds = preds;
+  if (!target) return;
+  const m = matchTarget(preds, tCap);
+  if (!m) {
+    if (tCap - target.t > 1500) { target = null; hist = []; toast('Ziel verloren – neu antippen'); }
+    return;
+  }
+  const c = centerOf(m.box), dt = tCap - target.t;
+  if (dt > 0) { target.v = [0.5 * target.v[0] + 0.5 * (c[0] - target.c[0]) / dt, 0.5 * target.v[1] + 0.5 * (c[1] - target.c[1]) / dt]; }
+  target.box = m.box; target.c = c; target.t = tCap; target.cls = m.cls;
+  const o = oriAt(tCap); if (!o) return;
+  const P = estimate(m.box, o);
+  if (!P) { target.P = null; return; }
+  target.P = P;
+  hist.push({t: tCap, P}); if (hist.length > 90) hist.shift();
+}
+
+/* =====================  Anzeige  ===================== */
+const f1 = (x, u) => isFinite(x) ? x.toFixed(1) + ' ' + u : '–';
+function updateHud() {
+  const o = lastOri;
+  $('tilt').textContent = o ? camElevation(o).toFixed(1) + '°' : 'kein Sensor';
+  if (!target || !target.P) { $('speed').innerHTML = '– <small>km/h</small>'; ['vh','vv','dist','alt'].forEach(i => $(i).textContent = '–'); return; }
+  const P = target.P, ground = S.mode === 'ground';
+  $('dist').textContent = f1(Math.hypot(P[0], P[1], P[2]), 'm');
+  $('alt').textContent = ground ? '0 m (Boden)' : f1(P[2] + S.hcam, 'm');
+  const v = velocity(S.win);
+  if (!v) { $('speed').innerHTML = '… <small>messe</small>'; return; }
+  const vh_ = Math.hypot(v[0], v[1]), v3 = ground ? vh_ : Math.hypot(v[0], v[1], v[2]);
+  const kmh = v3 * 3.6;
+  if (kmh > maxKmh && hist.length > 8) maxKmh = kmh;
+  $('speed').innerHTML = kmh.toFixed(kmh < 100 ? 1 : 0) + ' <small>km/h</small>';
+  $('vh').textContent = f1(vh_ * 3.6, 'km/h');
+  $('vv').textContent = ground ? '–' : f1(v[2] * 3.6, 'km/h');
+  $('vmax').textContent = f1(maxKmh, 'km/h');
+}
+
+function layout() {
+  const dpr = window.devicePixelRatio || 1, cw = cv.clientWidth, ch = cv.clientHeight;
+  if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const sc = Math.min(cw / vw, ch / vh);
+  return {sc, ox: (cw - vw * sc) / 2, oy: (ch - vh * sc) / 2, cw, ch};
+}
+function draw() {
+  if (!vw) return;
+  const L = layout();
+  ctx.clearRect(0, 0, L.cw, L.ch);
+  ctx.lineWidth = 2; ctx.font = '13px system-ui';
+  for (const p of lastPreds) {
+    const [x, y, w, h] = p.box, isT = target && p.box === target.box;
+    ctx.strokeStyle = isT ? '#22d3a0' : 'rgba(255,255,255,.55)';
+    ctx.lineWidth = isT ? 3.5 : 1.5;
+    ctx.strokeRect(L.ox + x * L.sc, L.oy + y * L.sc, w * L.sc, h * L.sc);
+    ctx.fillStyle = isT ? '#22d3a0' : 'rgba(255,255,255,.8)';
+    ctx.fillText(p.cls + ' ' + Math.round(p.score * 100) + '%', L.ox + x * L.sc + 3, L.oy + y * L.sc - 5);
+  }
+  // Fadenkreuz
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
+  const cx = L.cw / 2, cy = L.ch / 2;
+  ctx.beginPath(); ctx.moveTo(cx - 14, cy); ctx.lineTo(cx + 14, cy); ctx.moveTo(cx, cy - 14); ctx.lineTo(cx, cy + 14); ctx.stroke();
+}
+let toastT = 0;
+function toast(msg, ms = 3500) { const s = $('status'); s.textContent = msg; clearTimeout(toastT); if (ms) toastT = setTimeout(() => { s.textContent = target ? '' : 'Tippe auf ein erkanntes Objekt, um es zu verfolgen'; }, ms); }
+
+/* =====================  Frame-Schleife  ===================== */
+function schedule() {
+  if (!running) return;
+  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback((now, meta) => onFrame(meta && meta.captureTime ? meta.captureTime : performance.now()));
+  else requestAnimationFrame(() => onFrame(performance.now()));
+}
+async function onFrame(tCap) {
+  try {
+    vw = video.videoWidth; vh = video.videoHeight;
+    if (vw && model) {
+      const preds = (await model.detect(video, 20, 0.3)).map(p => ({cls: p.class, score: p.score, box: p.bbox}));
+      handleFrame(preds, tCap);
+      draw(); updateHud();
+    }
+  } catch (e) { console.error(e); }
+  schedule();
+}
+
+/* =====================  Bedienung  ===================== */
+cv.addEventListener('pointerdown', ev => {
+  if (!running || !vw) return;
+  const r = cv.getBoundingClientRect(), L = layout();
+  const x = (ev.clientX - r.left - L.ox) / L.sc, y = (ev.clientY - r.top - L.oy) / L.sc;
+  let pick = null, area = Infinity;
+  for (const p of lastPreds) { const [bx, by, bw, bh] = p.box; if (x >= bx && x <= bx + bw && y >= by && y <= by + bh && bw * bh < area) { area = bw * bh; pick = p; } }
+  hist = [];
+  if (pick) { target = {box: pick.box, c: centerOf(pick.box), v: [0, 0], t: performance.now(), cls: pick.cls, P: null}; toast('Ziel: ' + pick.cls + ' – halte es im Bild'); }
+  else { target = null; toast('Ziel gelöst'); }
+});
+
+async function start() {
+  $('startBtn').disabled = true; toast('Kamera wird gestartet …', 0);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: 'environment'}, width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}}});
+    video.srcObject = stream; await video.play();
+  } catch (e) { toast('Kamera nicht verfügbar: ' + e.message, 0); $('startBtn').disabled = false; return; }
+
+  try { if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') await DeviceOrientationEvent.requestPermission(); } catch (e) {}
+  window.addEventListener('deviceorientationabsolute', e => pushOri(e, true), true);
+  window.addEventListener('deviceorientation', e => pushOri(e, false), true);
+
+  toast('Objekterkennung wird geladen (einmalig ~5 MB) …', 0);
+  try { model = await cocoSsd.load({base: 'lite_mobilenet_v2'}); }
+  catch (e) { toast('Modell konnte nicht geladen werden (Internet?): ' + e.message, 0); $('startBtn').disabled = false; return; }
+
+  try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {}
+  $('startBtn').style.display = 'none'; $('bar').style.display = 'flex';
+  running = true; toast('Tippe auf ein erkanntes Objekt, um es zu verfolgen', 0);
+  schedule();
+  setTimeout(() => { if (!oriBuf.length) toast('Keine Sensordaten! Bewegungssensoren erlauben (Chrome → Websiteeinstellungen).', 0); }, 2500);
+}
+$('startBtn').onclick = start;
+$('resetBtn').onclick = () => { target = null; hist = []; toast('Ziel gelöst'); };
+$('maxResetBtn').onclick = () => { maxKmh = 0; $('vmax').textContent = '–'; };
+$('settingsBtn').onclick = () => $('panel').classList.add('open');
+$('closeBtn').onclick = () => $('panel').classList.remove('open');
+
+/* Einstellungs-Panel */
+const presetSel = $('preset');
+PRESETS.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; presetSel.appendChild(o); });
+function syncUI() {
+  $('mode').value = S.mode; presetSel.value = S.preset; $('size').value = S.size; $('dim').value = S.dim;
+  $('hcam').value = S.hcam; $('fov').value = (+S.fov).toFixed(1); $('win').value = S.win; $('winv').textContent = (+S.win).toFixed(1);
+  $('sizeBox').style.display = S.mode === 'size' ? 'block' : 'none';
+}
+const changed = () => { hist = []; saveS(); syncUI(); };
+$('mode').onchange = e => { S.mode = e.target.value; changed(); };
+presetSel.onchange = e => { S.preset = e.target.value; const p = PRESETS.find(x => x.id === S.preset); if (p && p.id !== 'custom') { S.size = p.m; S.dim = p.dim; } changed(); };
+$('size').onchange = e => { S.size = Math.max(0.05, parseFloat(e.target.value) || S.size); S.preset = 'custom'; changed(); };
+$('dim').onchange = e => { S.dim = e.target.value; S.preset = 'custom'; changed(); };
+$('hcam').onchange = e => { S.hcam = Math.max(0, parseFloat(e.target.value) || 0); changed(); };
+$('fov').onchange = e => { S.fov = Math.min(120, Math.max(20, parseFloat(e.target.value) || S.fov)); changed(); };
+$('win').oninput = e => { S.win = parseFloat(e.target.value); $('winv').textContent = S.win.toFixed(1); saveS(); };
+$('calBtn').onclick = () => {
+  if (!target || !vw) { toast('Erst ein Objekt antippen und im Bild halten'); return; }
+  const dist = parseFloat($('calDist').value);
+  if (!(dist > 0)) { toast('Bitte Abstand in Metern eingeben'); return; }
+  const px = S.dim === 'w' ? target.box[2] : target.box[3];
+  const f = px * dist / S.size, L = Math.max(vw, vh);
+  S.fov = deg(2 * Math.atan(L / 2 / f)); changed(); toast('Bildwinkel kalibriert: ' + S.fov.toFixed(1) + '°');
+};
+syncUI();
+</script>
+</body>
+</html>
