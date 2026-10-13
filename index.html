@@ -11,25 +11,32 @@
 html,body{margin:0;height:100%;background:#000;color:#fff;font:15px/1.35 system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:manipulation}
 #stage{position:fixed;inset:0}
 video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
-canvas{position:absolute;inset:0;width:100%;height:100%}
+canvas#c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 #hud{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top) + 8px) 12px 18px;background:linear-gradient(#000c,#0000);pointer-events:none}
 #speed{font-size:46px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums;line-height:1.05}
 #speed small{font-size:18px;color:#cfd8dc;font-weight:500}
 #grid{display:grid;grid-template-columns:repeat(3,auto);gap:2px 16px;justify-content:start;margin-top:6px;font-variant-numeric:tabular-nums}
 #grid b{display:block;font-size:11px;font-weight:500;color:#9aa7ad;text-transform:uppercase;letter-spacing:.04em}
 #grid span{font-size:18px}
-#status{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 76px);text-align:center;font-size:14px;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none}
+#info{margin-top:6px;font-size:12px;color:#9aa7ad;font-variant-numeric:tabular-nums}
+#status{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 118px);text-align:center;font-size:14px;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none}
+#zoomRow{position:absolute;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom) + 72px);display:none;align-items:center;gap:12px}
+#zoomRow input{flex:1;accent-color:var(--acc)}
+#zoomLbl{min-width:52px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #000}
 #bar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);background:linear-gradient(#0000,#000b)}
 button{font:inherit;color:#fff;background:#243038;border:1px solid #3b4a54;border-radius:12px;padding:12px 18px}
 button.primary{background:var(--acc);color:#04251c;border-color:var(--acc);font-weight:700}
+button.small{padding:8px 10px;font-size:13px}
 #startBtn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:20px;padding:18px 30px}
-#panel{position:absolute;left:0;right:0;bottom:0;max-height:78%;overflow:auto;background:var(--panel);border-top:1px solid #3b4a54;border-radius:18px 18px 0 0;padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);display:none}
+#panel{position:absolute;left:0;right:0;bottom:0;max-height:82%;overflow:auto;background:var(--panel);border-top:1px solid #3b4a54;border-radius:18px 18px 0 0;padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);display:none}
 #panel.open{display:block}
-#panel h3{margin:14px 0 6px;font-size:13px;color:#9aa7ad;text-transform:uppercase;letter-spacing:.05em}
+#panel h3{margin:16px 0 6px;font-size:13px;color:#9aa7ad;text-transform:uppercase;letter-spacing:.05em}
 #panel h3:first-child{margin-top:0}
 label{display:block;margin:8px 0 3px;font-size:13px;color:#cfd8dc}
-select,input{width:100%;font:inherit;color:#fff;background:#151c21;border:1px solid #3b4a54;border-radius:10px;padding:10px}
+select,input[type=number]{width:100%;font:inherit;color:#fff;background:#151c21;border:1px solid #3b4a54;border-radius:10px;padding:10px}
+input[type=range]{width:100%;accent-color:var(--acc)}
 .row{display:flex;gap:10px}.row>*{flex:1}
+.chk{display:flex;gap:10px;align-items:flex-start;margin-top:10px}.chk input{margin-top:3px}
 .hint{font-size:12px;color:#8d9aa1;margin-top:4px}
 </style>
 </head>
@@ -48,10 +55,13 @@ select,input{width:100%;font:inherit;color:#fff;background:#151c21;border:1px so
       <div><b>Höhe</b><span id="alt">–</span></div>
       <div><b>Kamera-Neigung</b><span id="tilt">–</span></div>
     </div>
+    <div id="info"></div>
   </div>
 
   <div id="status">Tippe auf „Start“</div>
   <button id="startBtn" class="primary">Start</button>
+
+  <div id="zoomRow"><input id="zoom" type="range" min="1" max="10" step="0.1" value="1"><span id="zoomLbl">1.0×</span></div>
 
   <div id="bar" style="display:none">
     <button id="settingsBtn">⚙ Einstellungen</button>
@@ -79,17 +89,47 @@ select,input{width:100%;font:inherit;color:#fff;background:#151c21;border:1px so
       <div class="hint">Je schräger du auf das Objekt blickst, desto kleiner erscheint es im Bild → Entfernung wird überschätzt, Geschwindigkeit ungenau.</div>
     </div>
 
-    <h3>Kamera</h3>
+    <h3>Kamera &amp; Zoom</h3>
+    <label for="cam">Objektiv</label>
+    <select id="cam"></select>
+    <div class="hint">Beim S24 gibt es meist mehrere Rückkameras (Ultraweit, Haupt, 3× Tele). Für Zoom ist die Tele-Kamera optisch am besten – probiere die Einträge durch. Danach den Bildwinkel unten setzen/kalibrieren.</div>
+    <label for="res">Auflösung</label>
+    <select id="res">
+      <option value="720">HD 1280×720 (schnell)</option>
+      <option value="1080">Full-HD 1920×1080 (empfohlen)</option>
+      <option value="2160">4K 3840×2160 (beste Zoom-Qualität, langsamer)</option>
+    </select>
+    <div class="hint">Zoom per Schieberegler unten oder Zwei-Finger-Geste. Während der Messung nicht zoomen.</div>
+
     <div class="row">
       <div><label for="hcam">Kamerahöhe über Boden (m)</label><input id="hcam" type="number" step="0.1" min="0" inputmode="decimal"></div>
-      <div><label for="fov">Bildwinkel lange Seite (°)</label><input id="fov" type="number" step="0.5" min="20" max="120" inputmode="decimal"></div>
+      <div><label for="fov">Bildwinkel bei 1× Zoom (°)</label><input id="fov" type="number" step="0.5" min="8" max="130" inputmode="decimal"></div>
     </div>
+    <div class="row" style="margin-top:8px">
+      <button class="small" data-fov="106">Ultraweit ≈106°</button>
+      <button class="small" data-fov="70">Haupt ≈70°</button>
+      <button class="small" data-fov="29">3× Tele ≈29°</button>
+    </div>
+    <div class="hint">Richtwerte (lange Bildseite) für ein S24. Gilt pro Objektiv und wird gespeichert.</div>
     <label for="calDist">Kalibrieren: Objekt (Größe oben eingestellt) ist gerade ___ m entfernt</label>
     <div class="row">
       <input id="calDist" type="number" step="0.5" min="1" inputmode="decimal" placeholder="z. B. 20">
       <button id="calBtn">Bildwinkel berechnen</button>
     </div>
-    <div class="hint">Ziel antippen, Objekt möglichst mittig, Abstand mit Maßband/Schritten bestimmen. Das ist die wichtigste Maßnahme für gute Genauigkeit.</div>
+    <div class="hint">Ziel antippen, Objekt möglichst mittig, Abstand mit Maßband/Schritten bestimmen. Der aktuelle Zoom wird herausgerechnet.</div>
+
+    <h3>Objekterkennung</h3>
+    <label for="model">KI-Modell</label>
+    <select id="model">
+      <option value="lite2">EfficientDet-Lite2 (genau, empfohlen)</option>
+      <option value="lite0">EfficientDet-Lite0 (schneller)</option>
+    </select>
+    <label for="thr">Mindest-Sicherheit: <span id="thrv"></span></label>
+    <input id="thr" type="range" min="0.15" max="0.7" step="0.05">
+    <div class="chk"><input id="tiles" type="checkbox"><div>Kleine/ferne Objekte suchen (Bild in Kacheln scannen)<div class="hint">Findet kleinere Objekte, kostet aber Bildrate – nur solange noch kein Ziel gewählt ist.</div></div></div>
+    <label for="mpct">Manuelles Ziel: Rahmengröße <span id="mpctv"></span> % der Bildlänge</label>
+    <input id="mpct" type="range" min="1" max="30" step="1">
+    <div class="hint">Tippe auf eine freie Stelle (z. B. eine Drohne, die die KI nicht kennt) → es wird ein Rahmen gesetzt und per Bildvergleich verfolgt. Rahmen so einstellen, dass er das Objekt eng umschließt.</div>
 
     <h3>Glättung</h3>
     <label for="win">Mess-Zeitfenster: <span id="winv"></span> s</label>
@@ -103,10 +143,77 @@ select,input{width:100%;font:inherit;color:#fff;background:#151c21;border:1px so
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 <script>
 'use strict';
+/* =====================  Reine Hilfsfunktionen (werden separat getestet)  ===================== */
+/* PURE:BEGIN */
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+// Summe der Absolutdifferenzen eines Musters an Position (x,y); bricht ab, sobald 'best' überschritten ist
+function sadAt(G, W, tp, tw, th, x, y, best) {
+  let s = 0;
+  for (let j = 0; j < th; j++) {
+    const gi = (y + j) * W + x, ti = j * tw;
+    for (let i = 0; i < tw; i++) s += Math.abs(G[gi + i] - tp[ti + i]);
+    if (s >= best) return s;
+  }
+  return s;
+}
+// Sucht das Muster um die erwartete Position (ex,ey = linke obere Ecke) im Radius r: grob (Schritt 2), dann fein
+function findTemplate(G, W, H, tp, tw, th, ex, ey, r) {
+  const x0 = Math.max(0, Math.round(ex - r)), x1 = Math.min(W - tw, Math.round(ex + r));
+  const y0 = Math.max(0, Math.round(ey - r)), y1 = Math.min(H - th, Math.round(ey + r));
+  if (x1 < x0 || y1 < y0) return null;
+  // Vollsuche (Schritt 1), solange der Rechenaufwand klein ist; sonst grob (Schritt 2) + Feinsuche
+  const step = (x1 - x0 + 1) * (y1 - y0 + 1) * tw * th > 4e6 ? 2 : 1;
+  let best = Infinity, bx = x0, by = y0;
+  for (let y = y0; y <= y1; y += step) for (let x = x0; x <= x1; x += step) {
+    const s = sadAt(G, W, tp, tw, th, x, y, best);
+    if (s < best) { best = s; bx = x; by = y; }
+  }
+  const fx0 = Math.max(x0, bx - 1), fx1 = Math.min(x1, bx + 1), fy0 = Math.max(y0, by - 1), fy1 = Math.min(y1, by + 1);
+  for (let y = fy0; y <= fy1; y++) for (let x = fx0; x <= fx1; x++) {
+    const s = sadAt(G, W, tp, tw, th, x, y, best);
+    if (s < best) { best = s; bx = x; by = y; }
+  }
+  return {x: bx, y: by, score: best / (tw * th)};
+}
+// Schneidet das Muster (Rahmen 'box' in Bildpixeln) aus dem Graubild G (GS×GS, entspricht dem Ausschnitt roi) aus
+function captureTpl(G, GS, roi, box) {
+  const cs = GS / roi.s;
+  let w = clamp(Math.round(box[2] * cs), 4, 48), h = clamp(Math.round(box[3] * cs), 4, 48);
+  const x = clamp(Math.round((box[0] - roi.x) * cs), 0, GS - w), y = clamp(Math.round((box[1] - roi.y) * cs), 0, GS - h);
+  const d = new Uint8Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) d[j * w + i] = G[(y + j) * GS + x + i];
+  return {d, w, h, scale: cs};
+}
+// Muster auf einen anderen Maßstab umrechnen (nächster Nachbar)
+function rescaleTpl(t, cs) {
+  const f = cs / t.scale, w = Math.max(4, Math.round(t.w * f)), h = Math.max(4, Math.round(t.h * f));
+  const d = new Uint8Array(w * h);
+  for (let j = 0; j < h; j++) {
+    const sj = Math.min(t.h - 1, Math.floor(j / f));
+    for (let i = 0; i < w; i++) d[j * w + i] = t.d[sj * t.w + Math.min(t.w - 1, Math.floor(i / f))];
+  }
+  return {d, w, h, scale: cs};
+}
+function iou(a, b) {
+  const x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]), x2 = Math.min(a[0] + a[2], b[0] + b[2]), y2 = Math.min(a[1] + a[3], b[1] + b[3]);
+  const i = Math.max(0, x2 - x1) * Math.max(0, y2 - y1), u = a[2] * a[3] + b[2] * b[3] - i;
+  return u > 0 ? i / u : 0;
+}
+function dedupe(list, thr = 0.5) {
+  const out = [];
+  for (const p of [...list].sort((a, b) => b.score - a.score)) if (!out.some(q => iou(p.box, q.box) > thr)) out.push(p);
+  return out;
+}
+// Rahmen aus Ausschnitt-Koordinaten (Canvas der Breite cw) zurück in Videobild-Koordinaten
+function mapRoiBox(b, roi, cw) {
+  const k = roi.s / cw;
+  return [roi.x + b[0] * k, roi.y + b[1] * k, b[2] * k, b[3] * k];
+}
+/* PURE:END */
+
 /* =====================  Hilfsfunktionen & Einstellungen  ===================== */
 const $ = id => document.getElementById(id);
 const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
@@ -125,18 +232,25 @@ const PRESETS = [
   {id:'gull',       name:'Möwe (Spannweite 1,0 m)',                    dim:'w', m:1.0},
   {id:'custom',     name:'Eigene Größe …',                             dim:'w', m:1.0}
 ];
-const DEFAULTS = {mode:'size', preset:'car_rear', dim:'w', size:1.8, hcam:1.5, fov:70, win:1.0};
+const MP_BASE = 'https://storage.googleapis.com/mediapipe-models/object_detector/';
+const MODELS = {
+  lite2: {name: 'EfficientDet-Lite2', url: MP_BASE + 'efficientdet_lite2/float16/latest/efficientdet_lite2.tflite', size: 448},
+  lite0: {name: 'EfficientDet-Lite0', url: MP_BASE + 'efficientdet_lite0/float16/latest/efficientdet_lite0.tflite', size: 320}
+};
+const VISION_VERSIONS = ['1.1.0', '0.10.21'];
+const RES = {'720': [1280, 720], '1080': [1920, 1080], '2160': [3840, 2160]};
+const DEFAULTS = {mode:'size', preset:'car_rear', dim:'w', size:1.8, hcam:1.5, fovBy:{}, win:1.0, cam:'', res:'1080', model:'lite2', thr:0.35, tiles:false, mpct:5};
 let S = Object.assign({}, DEFAULTS);
-try { Object.assign(S, JSON.parse(localStorage.getItem('speedcam-settings') || '{}')); } catch (e) {}
-const saveS = () => { try { localStorage.setItem('speedcam-settings', JSON.stringify(S)); } catch (e) {} };
+try { Object.assign(S, JSON.parse(localStorage.getItem('speedcam-settings-v2') || '{}')); } catch (e) {}
+if (!S.fovBy || typeof S.fovBy !== 'object') S.fovBy = {};
+const saveS = () => { try { localStorage.setItem('speedcam-settings-v2', JSON.stringify(S)); } catch (e) {} };
 
 /* =====================  Sensor (Lage des Handys)  ===================== */
-// Ringpuffer mit Zeitstempeln, damit wir die Lage zum Aufnahmezeitpunkt des Kamerabilds nehmen können.
 const oriBuf = [];
-let gotAbs = false, lastOri = null;
+let gotAbs = false, lastOri = null, oriInit = false;
 function pushOri(e, abs) {
   if (e.alpha == null || e.beta == null || e.gamma == null) return;
-  if (!abs && gotAbs) return;             // absolute Events haben Vorrang
+  if (!abs && gotAbs) return;
   if (abs) gotAbs = true;
   lastOri = {t: e.timeStamp, a: e.alpha, b: e.beta, g: e.gamma};
   oriBuf.push(lastOri);
@@ -148,7 +262,6 @@ function oriAt(t) {
   for (const o of oriBuf) { const d = Math.abs(o.t - t); if (d < bd) { bd = d; best = o; } }
   return best;
 }
-// Drehmatrix Gerät → Welt (x=Ost, y=Nord, z=oben), W3C-Konvention Z-X'-Y''
 function rotMat(a, b, g) {
   const cA = Math.cos(rad(a)), sA = Math.sin(rad(a));
   const cB = Math.cos(rad(b)), sB = Math.sin(rad(b));
@@ -169,15 +282,17 @@ function scrAngle() {
         : (typeof window.orientation === 'number' ? window.orientation : 0);
   return ((a % 360) + 360) % 360;
 }
-// Neigung der optischen Achse über dem Horizont (°)
-function camElevation(o) { return deg(Math.asin(Math.max(-1, Math.min(1, -Math.cos(rad(o.b)) * Math.cos(rad(o.g)))))); }
+function camElevation(o) { return deg(Math.asin(clamp(-Math.cos(rad(o.b)) * Math.cos(rad(o.g)), -1, 1))); }
 
-/* =====================  Geometrie  ===================== */
+/* =====================  Kamera, Zoom, Geometrie  ===================== */
 const video = $('v'), cv = $('c'), ctx = cv.getContext('2d');
 let vw = 0, vh = 0;
-const focalPx = () => (Math.max(vw, vh) / 2) / Math.tan(rad(S.fov) / 2);
+let stream = null, track = null, curCamId = 'default', zoomNow = 1, zoomRange = null;
+const camKey = () => curCamId || 'default';
+const fovBase = () => S.fovBy[camKey()] || 70;            // Bildwinkel (lange Seite) bei Zoom 1×
+const fovEff = () => deg(2 * Math.atan(Math.tan(rad(fovBase()) / 2) / zoomNow));
+const focalPx = () => (Math.max(vw, vh) / 2) / Math.tan(rad(fovBase()) / 2) * zoomNow;
 
-// Pixel → Strahl im Gerätekoordinatensystem (Kamera blickt entlang -z), Tiefe = 1
 function rayDev(u, v) {
   const f = focalPx(), xn = (u - vw / 2) / f, yn = -(v - vh / 2) / f;
   switch (scrAngle()) {
@@ -187,26 +302,163 @@ function rayDev(u, v) {
     default:  return [ xn,  yn, -1];
   }
 }
-// Position des Objekts relativ zur Kamera in Weltkoordinaten (Meter) – oder null
 function estimate(box, o) {
   const [x, y, w, h] = box, R = rotMat(o.a, o.b, o.g);
   if (S.mode === 'ground') {
-    const r = mul(R, rayDev(x + w / 2, y + h));      // Unterkante der Box = Bodenkontakt
-    if (r[2] > -0.01) return null;                    // Strahl geht nicht nach unten
+    const r = mul(R, rayDev(x + w / 2, y + h));
+    if (r[2] > -0.01) return null;
     const t = S.hcam / (-r[2]);
     if (t > 3000) return null;
     return [r[0] * t, r[1] * t, -S.hcam];
   }
   const px = S.dim === 'w' ? w : h;
   if (px < 4) return null;
-  const Z = focalPx() * S.size / px;                  // Tiefe entlang der optischen Achse
+  const Z = focalPx() * S.size / px;
   const d = rayDev(x + w / 2, y + h / 2);
   return mul(R, [d[0] * Z, d[1] * Z, d[2] * Z]);
 }
 
-/* =====================  Tracking & Geschwindigkeit  ===================== */
-let model = null, running = false, target = null, hist = [], lastPreds = [], maxKmh = 0;
+let busy = false, running = false, loopId = 0;
+async function openCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; track = null;
+  const [rw, rh] = RES[S.res] || RES['1080'];
+  const base = {width: {ideal: rw}, height: {ideal: rh}, frameRate: {ideal: 30}};
+  const tries = [];
+  if (S.cam) tries.push({...base, deviceId: {exact: S.cam}, zoom: true}, {...base, deviceId: {exact: S.cam}});
+  tries.push({...base, facingMode: {ideal: 'environment'}, zoom: true}, {...base, facingMode: {ideal: 'environment'}});
+  let err = null;
+  for (const v of tries) {
+    try { stream = await navigator.mediaDevices.getUserMedia({audio: false, video: v}); break; } catch (e) { err = e; }
+  }
+  if (!stream) throw err || new Error('keine Kamera');
+  track = stream.getVideoTracks()[0];
+  video.srcObject = stream; await video.play();
+  setupZoomUI();
+  try { await track.applyConstraints({advanced: [{focusMode: 'continuous'}]}); } catch (e) {}
+}
+function setupZoomUI() {
+  zoomRange = null; zoomNow = 1;
+  let caps = {}; try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch (e) {}
+  const st = track.getSettings ? track.getSettings() : {};
+  curCamId = st.deviceId || 'default';
+  const row = $('zoomRow'), z = $('zoom');
+  if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+    zoomRange = {min: caps.zoom.min, max: caps.zoom.max};
+    z.min = caps.zoom.min; z.max = caps.zoom.max; z.step = caps.zoom.step || 0.1;
+    zoomNow = st.zoom || Math.max(1, caps.zoom.min);
+    z.value = zoomNow; $('zoomLbl').textContent = zoomNow.toFixed(1) + '×';
+    row.style.display = 'flex';
+  } else row.style.display = 'none';
+}
+let zPending = null, zBusy = false;
+async function setZoom(z) {
+  if (!zoomRange || !track) return;
+  zPending = clamp(z, zoomRange.min, zoomRange.max);
+  $('zoomLbl').textContent = zPending.toFixed(1) + '×';
+  if (zBusy) return;
+  zBusy = true;
+  while (zPending != null) {
+    const v = zPending; zPending = null;
+    try { await track.applyConstraints({advanced: [{zoom: v}]}); const st = track.getSettings(); zoomNow = st.zoom || v; hist = []; }
+    catch (e) { toast('Zoom nicht möglich: ' + e.message); }
+  }
+  zBusy = false;
+  $('zoom').value = zoomNow; $('zoomLbl').textContent = zoomNow.toFixed(1) + '×';
+  syncUI();
+}
+async function listCams() {
+  let devs = [];
+  try { devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && !/front|user/i.test(d.label)); } catch (e) {}
+  const sel = $('cam'); sel.innerHTML = '';
+  sel.add(new Option('Automatisch (Standard-Rückkamera)', ''));
+  devs.forEach((d, i) => sel.add(new Option(d.label || ('Kamera ' + (i + 1)), d.deviceId)));
+  sel.value = S.cam || '';
+  if (sel.value !== (S.cam || '')) { sel.value = ''; S.cam = ''; }
+}
+async function reopenCamera() {
+  busy = true; target = null; hist = []; lastPreds = []; vw = vh = 0;
+  try { await openCamera(); toast('Kamera: ' + (track.label || 'neu') + ' – Bildwinkel prüfen/kalibrieren', 6000); }
+  catch (e) { toast('Kamera-Fehler: ' + e.message, 0); }
+  syncUI(); loopId++; busy = false; schedule();
+}
 
+/* =====================  KI-Modell (MediaPipe EfficientDet)  ===================== */
+let vision = null, fileset = null, detector = null, modelKey = null;
+const roiCv = document.createElement('canvas'), rctx = roiCv.getContext('2d');
+const fullCv = document.createElement('canvas'), fctx = fullCv.getContext('2d');
+const tileCv = document.createElement('canvas'), tctx = tileCv.getContext('2d');
+const GS = 128, grayCv = document.createElement('canvas'), gctx = grayCv.getContext('2d', {willReadFrequently: true});
+grayCv.width = grayCv.height = GS;
+const FULLMAX = 960, TPL_MAX = 32, MINROI = 128;
+
+async function loadDetector(key) {
+  const M = MODELS[key];
+  if (!vision) {
+    let err = null;
+    for (const v of VISION_VERSIONS) {
+      try {
+        const base = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + v;
+        const mod = await import(base + '/vision_bundle.mjs');
+        fileset = await mod.FilesetResolver.forVisionTasks(base + '/wasm');
+        vision = mod; break;
+      } catch (e) { err = e; }
+    }
+    if (!vision) throw err || new Error('MediaPipe konnte nicht geladen werden');
+  }
+  const make = delegate => vision.ObjectDetector.createFromOptions(fileset, {
+    baseOptions: {modelAssetPath: M.url, delegate}, runningMode: 'IMAGE', scoreThreshold: 0.15, maxResults: 30
+  });
+  let d; try { d = await make('GPU'); } catch (e) { d = await make('CPU'); }
+  if (detector) { try { detector.close(); } catch (e) {} }
+  detector = d; modelKey = key;
+  roiCv.width = roiCv.height = M.size;
+}
+function detectCanvas(c) {
+  if (!c.width || !c.height) return [];
+  return detector.detect(c).detections.map(d => ({
+    cls: d.categories[0].categoryName, score: d.categories[0].score,
+    box: [d.boundingBox.originX, d.boundingBox.originY, d.boundingBox.width, d.boundingBox.height]
+  }));
+}
+function detectFull() {
+  const sc = Math.min(1, FULLMAX / Math.max(vw, vh)), w = Math.round(vw * sc), h = Math.round(vh * sc);
+  if (fullCv.width !== w || fullCv.height !== h) { fullCv.width = w; fullCv.height = h; }
+  fctx.drawImage(video, 0, 0, w, h);
+  return detectCanvas(fullCv).map(p => ({cls: p.cls, score: p.score, box: p.box.map(v => v / sc)}));
+}
+function detectTiles() {
+  const M = MODELS[modelKey], tw = vw * 0.55, th = vh * 0.55, cw = M.size, ch = Math.max(32, Math.round(M.size * th / tw));
+  if (tileCv.width !== cw || tileCv.height !== ch) { tileCv.width = cw; tileCv.height = ch; }
+  const out = [];
+  for (const y of [0, vh - th]) for (const x of [0, vw - tw]) {
+    tctx.drawImage(video, x, y, tw, th, 0, 0, cw, ch);
+    const kx = tw / cw, ky = th / ch;
+    for (const p of detectCanvas(tileCv)) out.push({cls: p.cls, score: p.score, box: [x + p.box[0] * kx, y + p.box[1] * ky, p.box[2] * kx, p.box[3] * ky]});
+  }
+  return out;
+}
+function grabGray(roi) {
+  gctx.drawImage(video, roi.x, roi.y, roi.s, roi.s, 0, 0, GS, GS);
+  const d = gctx.getImageData(0, 0, GS, GS).data, g = new Uint8Array(GS * GS);
+  for (let i = 0; i < g.length; i++) g[i] = (d[4 * i] * 77 + d[4 * i + 1] * 150 + d[4 * i + 2] * 29) >> 8;
+  return g;
+}
+
+/* =====================  Tracking & Geschwindigkeit  ===================== */
+let target = null, hist = [], lastPreds = [], maxKmh = 0, perfMs = 0;
+const centerOf = b => [b[0] + b[2] / 2, b[1] + b[3] / 2];
+function predict(T, tCap) {
+  const dt = Math.min(1000, Math.max(0, tCap - T.t));
+  return [T.c[0] + T.v[0] * dt, T.c[1] + T.v[1] * dt];
+}
+// Suchausschnitt (quadratisch) um das erwartete Ziel; null → ganzes Bild verwenden
+function roiFor(T, tCap) {
+  const big = Math.max(T.box[2], T.box[3]), s = Math.max(MINROI, big * (4 + Math.min(T.miss, 6)));
+  if (s > 0.8 * Math.min(vw, vh)) return null;
+  const pc = predict(T, tCap);
+  return {x: clamp(pc[0] - s / 2, 0, vw - s), y: clamp(pc[1] - s / 2, 0, vh - s), s};
+}
 function velocity(win) {
   if (hist.length < 4) return null;
   const tN = hist[hist.length - 1].t;
@@ -219,15 +471,12 @@ function velocity(win) {
   for (let k = 0; k < 3; k++) {
     const pm = s.reduce((a, p) => a + p.P[k], 0) / s.length;
     let num = 0; for (const p of s) num += (p.t - tm) * (p.P[k] - pm);
-    v[k] = num / den * 1000;                          // m/s
+    v[k] = num / den * 1000;
   }
   return v;
 }
-const centerOf = b => [b[0] + b[2] / 2, b[1] + b[3] / 2];
-
 function matchTarget(preds, tCap) {
-  const T = target, dt = Math.min(1000, Math.max(0, tCap - T.t));
-  const pc = [T.c[0] + T.v[0] * dt, T.c[1] + T.v[1] * dt];
+  const T = target, pc = predict(T, tCap);
   const lim = Math.max(T.box[2], T.box[3]) * 1.2 + 40;
   let best = null, bd = Infinity;
   for (const p of preds) {
@@ -238,23 +487,57 @@ function matchTarget(preds, tCap) {
   }
   return best;
 }
-
-function handleFrame(preds, tCap) {
+// Fallback, wenn die KI das Ziel nicht (mehr) erkennt: Bildvergleich mit dem zuletzt gemerkten Aussehen
+function trackTemplate(T, roi, G, tCap) {
+  const cs = GS / roi.s; let t = T.tpl;
+  if (Math.abs(cs / t.scale - 1) > 0.06) t = rescaleTpl(t, cs);
+  const pc = predict(T, tCap);
+  const ex = (pc[0] - roi.x) * cs - t.w / 2, ey = (pc[1] - roi.y) * cs - t.h / 2;
+  const r = findTemplate(G, GS, GS, t.d, t.w, t.h, ex, ey, Math.round(0.3 * GS));
+  if (!r || r.score > TPL_MAX) return null;
+  let w = T.box[2], h = T.box[3];
+  if (T.manual) { w = h = Math.max(16, S.mpct / 100 * Math.max(vw, vh)); }
+  const cx = roi.x + (r.x + t.w / 2) / cs, cy = roi.y + (r.y + t.h / 2) / cs;
+  return [cx - w / 2, cy - h / 2, w, h];
+}
+function handleFrame(preds, tCap, roi, G) {
   lastPreds = preds;
-  if (!target) return;
+  const T = target; if (!T) return;
+  if (T.needTpl && roi && G) { T.tpl = captureTpl(G, GS, roi, T.box); T.needTpl = false; }
   const m = matchTarget(preds, tCap);
-  if (!m) {
-    if (tCap - target.t > 1500) { target = null; hist = []; toast('Ziel verloren – neu antippen'); }
+  let nb = null, src = null;
+  if (m) { nb = m.box; src = 'dnn'; T.cls = m.cls; T.manual = false; }
+  else if (roi && G && T.tpl) { const r = trackTemplate(T, roi, G, tCap); if (r) { nb = r; src = 'tpl'; } }
+  if (!nb) {
+    T.miss++;
+    if (tCap - T.seen > 1500) { target = null; hist = []; toast('Ziel verloren – neu antippen'); }
     return;
   }
-  const c = centerOf(m.box), dt = tCap - target.t;
-  if (dt > 0) { target.v = [0.5 * target.v[0] + 0.5 * (c[0] - target.c[0]) / dt, 0.5 * target.v[1] + 0.5 * (c[1] - target.c[1]) / dt]; }
-  target.box = m.box; target.c = c; target.t = tCap; target.cls = m.cls;
+  const c = centerOf(nb), dt = tCap - T.t;
+  if (dt > 0 && dt < 500) T.v = [0.5 * T.v[0] + 0.5 * (c[0] - T.c[0]) / dt, 0.5 * T.v[1] + 0.5 * (c[1] - T.c[1]) / dt];
+  T.box = nb; T.c = c; T.t = tCap; T.seen = tCap; T.miss = 0; T.src = src;
+  if (roi && G && src === 'dnn') T.tpl = captureTpl(G, GS, roi, nb);
   const o = oriAt(tCap); if (!o) return;
-  const P = estimate(m.box, o);
-  if (!P) { target.P = null; return; }
-  target.P = P;
+  const P = estimate(nb, o);
+  if (!P) { T.P = null; return; }
+  T.P = P;
   hist.push({t: tCap, P}); if (hist.length > 90) hist.shift();
+}
+function processFrame(tCap) {
+  let preds, roi = null, G = null;
+  if (target) roi = roiFor(target, tCap);
+  if (roi) {
+    const M = MODELS[modelKey];
+    rctx.drawImage(video, roi.x, roi.y, roi.s, roi.s, 0, 0, M.size, M.size);
+    preds = detectCanvas(roiCv).map(p => ({cls: p.cls, score: p.score, box: mapRoiBox(p.box, roi, M.size)}));
+    G = grabGray(roi);
+    preds = preds.filter(p => p.score >= Math.min(S.thr, 0.25));
+  } else {
+    preds = detectFull();
+    if (S.tiles && !target) preds = dedupe(preds.concat(detectTiles()));
+    preds = preds.filter(p => p.score >= S.thr);
+  }
+  handleFrame(preds, tCap, roi, G);
 }
 
 /* =====================  Anzeige  ===================== */
@@ -262,6 +545,8 @@ const f1 = (x, u) => isFinite(x) ? x.toFixed(1) + ' ' + u : '–';
 function updateHud() {
   const o = lastOri;
   $('tilt').textContent = o ? camElevation(o).toFixed(1) + '°' : 'kein Sensor';
+  $('info').textContent = vw + '×' + vh + ' · Zoom ' + zoomNow.toFixed(1) + '× · Bildwinkel ' + fovEff().toFixed(0) + '° · Erkennung ' + perfMs.toFixed(0) + ' ms'
+    + (target ? ' · ' + (target.src === 'tpl' ? 'Bild-Tracker' : 'KI') : '');
   if (!target || !target.P) { $('speed').innerHTML = '– <small>km/h</small>'; ['vh','vv','dist','alt'].forEach(i => $(i).textContent = '–'); return; }
   const P = target.P, ground = S.mode === 'ground';
   $('dist').textContent = f1(Math.hypot(P[0], P[1], P[2]), 'm');
@@ -276,7 +561,6 @@ function updateHud() {
   $('vv').textContent = ground ? '–' : f1(v[2] * 3.6, 'km/h');
   $('vmax').textContent = f1(maxKmh, 'km/h');
 }
-
 function layout() {
   const dpr = window.devicePixelRatio || 1, cw = cv.clientWidth, ch = cv.clientHeight;
   if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); }
@@ -288,71 +572,120 @@ function draw() {
   if (!vw) return;
   const L = layout();
   ctx.clearRect(0, 0, L.cw, L.ch);
-  ctx.lineWidth = 2; ctx.font = '13px system-ui';
+  ctx.font = '13px system-ui';
   for (const p of lastPreds) {
-    const [x, y, w, h] = p.box, isT = target && p.box === target.box;
-    ctx.strokeStyle = isT ? '#22d3a0' : 'rgba(255,255,255,.55)';
-    ctx.lineWidth = isT ? 3.5 : 1.5;
+    const [x, y, w, h] = p.box;
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([]);
     ctx.strokeRect(L.ox + x * L.sc, L.oy + y * L.sc, w * L.sc, h * L.sc);
-    ctx.fillStyle = isT ? '#22d3a0' : 'rgba(255,255,255,.8)';
+    ctx.fillStyle = 'rgba(255,255,255,.8)';
     ctx.fillText(p.cls + ' ' + Math.round(p.score * 100) + '%', L.ox + x * L.sc + 3, L.oy + y * L.sc - 5);
   }
-  // Fadenkreuz
+  if (target) {
+    const [x, y, w, h] = target.box;
+    ctx.strokeStyle = '#22d3a0'; ctx.lineWidth = 3.5; ctx.setLineDash(target.src === 'tpl' ? [8, 6] : []);
+    ctx.strokeRect(L.ox + x * L.sc, L.oy + y * L.sc, w * L.sc, h * L.sc);
+    ctx.setLineDash([]); ctx.fillStyle = '#22d3a0';
+    ctx.fillText((target.cls || 'manuelles Ziel') + (target.src === 'tpl' ? ' (Bild-Tracker)' : ''), L.ox + x * L.sc + 3, L.oy + y * L.sc - 6);
+  }
   ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
   const cx = L.cw / 2, cy = L.ch / 2;
   ctx.beginPath(); ctx.moveTo(cx - 14, cy); ctx.lineTo(cx + 14, cy); ctx.moveTo(cx, cy - 14); ctx.lineTo(cx, cy + 14); ctx.stroke();
 }
 let toastT = 0;
-function toast(msg, ms = 3500) { const s = $('status'); s.textContent = msg; clearTimeout(toastT); if (ms) toastT = setTimeout(() => { s.textContent = target ? '' : 'Tippe auf ein erkanntes Objekt, um es zu verfolgen'; }, ms); }
+function toast(msg, ms = 3500) {
+  const s = $('status'); s.textContent = msg; clearTimeout(toastT);
+  if (ms) toastT = setTimeout(() => { s.textContent = target ? '' : 'Tippe auf ein erkanntes Objekt – oder auf eine freie Stelle für ein manuelles Ziel'; }, ms);
+}
 
 /* =====================  Frame-Schleife  ===================== */
 function schedule() {
   if (!running) return;
-  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback((now, meta) => onFrame(meta && meta.captureTime ? meta.captureTime : performance.now()));
-  else requestAnimationFrame(() => onFrame(performance.now()));
+  const id = loopId;
+  const run = t => { if (id === loopId) onFrame(t); };
+  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback((now, meta) => run(meta && meta.captureTime ? meta.captureTime : performance.now()));
+  else requestAnimationFrame(() => run(performance.now()));
 }
-async function onFrame(tCap) {
+function onFrame(tCap) {
   try {
     vw = video.videoWidth; vh = video.videoHeight;
-    if (vw && model) {
-      const preds = (await model.detect(video, 20, 0.3)).map(p => ({cls: p.class, score: p.score, box: p.bbox}));
-      handleFrame(preds, tCap);
+    if (vw && detector && !busy) {
+      const t0 = performance.now();
+      processFrame(tCap);
+      perfMs = perfMs * 0.8 + (performance.now() - t0) * 0.2;
       draw(); updateHud();
     }
   } catch (e) { console.error(e); }
   schedule();
 }
 
-/* =====================  Bedienung  ===================== */
+/* =====================  Bedienung (Tippen, Pinch-Zoom)  ===================== */
+function handleTap(x, y) {
+  let pick = null, area = Infinity; const pad = 10;
+  for (const p of lastPreds) {
+    const [bx, by, bw, bh] = p.box;
+    if (x >= bx - pad && x <= bx + bw + pad && y >= by - pad && y <= by + bh + pad && bw * bh < area) { area = bw * bh; pick = p; }
+  }
+  hist = []; const now = performance.now();
+  if (pick) {
+    target = {box: pick.box, c: centerOf(pick.box), v: [0, 0], t: now, seen: now, cls: pick.cls, P: null, miss: 0, src: 'dnn', tpl: null, manual: false, needTpl: true};
+    toast('Ziel: ' + pick.cls + ' – halte es im Bild');
+  } else {
+    const s = Math.max(16, S.mpct / 100 * Math.max(vw, vh));
+    target = {box: [x - s / 2, y - s / 2, s, s], c: [x, y], v: [0, 0], t: now, seen: now, cls: null, P: null, miss: 0, src: 'tpl', tpl: null, manual: true, needTpl: true};
+    toast('Manuelles Ziel gesetzt – Rahmengröße in den Einstellungen anpassen');
+  }
+}
+const ptrs = new Map(); let tapInfo = null, pinch = null, wasPinch = false;
 cv.addEventListener('pointerdown', ev => {
   if (!running || !vw) return;
-  const r = cv.getBoundingClientRect(), L = layout();
-  const x = (ev.clientX - r.left - L.ox) / L.sc, y = (ev.clientY - r.top - L.oy) / L.sc;
-  let pick = null, area = Infinity;
-  for (const p of lastPreds) { const [bx, by, bw, bh] = p.box; if (x >= bx && x <= bx + bw && y >= by && y <= by + bh && bw * bh < area) { area = bw * bh; pick = p; } }
-  hist = [];
-  if (pick) { target = {box: pick.box, c: centerOf(pick.box), v: [0, 0], t: performance.now(), cls: pick.cls, P: null}; toast('Ziel: ' + pick.cls + ' – halte es im Bild'); }
-  else { target = null; toast('Ziel gelöst'); }
+  ptrs.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
+  if (ptrs.size === 1) { tapInfo = {x: ev.clientX, y: ev.clientY, t: performance.now(), moved: false}; wasPinch = false; }
+  else if (ptrs.size === 2) {
+    wasPinch = true; tapInfo = null;
+    const [a, b] = [...ptrs.values()];
+    pinch = {d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoomNow};
+  }
 });
+cv.addEventListener('pointermove', ev => {
+  if (!ptrs.has(ev.pointerId)) return;
+  ptrs.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
+  if (tapInfo && Math.hypot(ev.clientX - tapInfo.x, ev.clientY - tapInfo.y) > 12) tapInfo.moved = true;
+  if (ptrs.size === 2 && pinch && zoomRange) {
+    const [a, b] = [...ptrs.values()];
+    setZoom(pinch.z0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0);
+  }
+});
+const endPtr = ev => {
+  if (!ptrs.has(ev.pointerId)) return;
+  ptrs.delete(ev.pointerId);
+  if (tapInfo && ptrs.size === 0 && !wasPinch && !tapInfo.moved && performance.now() - tapInfo.t < 500 && ev.type === 'pointerup') {
+    const r = cv.getBoundingClientRect(), L = layout();
+    handleTap((ev.clientX - r.left - L.ox) / L.sc, (ev.clientY - r.top - L.oy) / L.sc);
+  }
+  if (ptrs.size < 2) pinch = null;
+  if (ptrs.size === 0) tapInfo = null;
+};
+cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 
 async function start() {
   $('startBtn').disabled = true; toast('Kamera wird gestartet …', 0);
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: 'environment'}, width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}}});
-    video.srcObject = stream; await video.play();
-  } catch (e) { toast('Kamera nicht verfügbar: ' + e.message, 0); $('startBtn').disabled = false; return; }
+  try { await openCamera(); }
+  catch (e) { toast('Kamera nicht verfügbar: ' + e.message, 0); $('startBtn').disabled = false; return; }
+  await listCams(); syncUI();
 
-  try { if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') await DeviceOrientationEvent.requestPermission(); } catch (e) {}
-  window.addEventListener('deviceorientationabsolute', e => pushOri(e, true), true);
-  window.addEventListener('deviceorientation', e => pushOri(e, false), true);
-
-  toast('Objekterkennung wird geladen (einmalig ~5 MB) …', 0);
-  try { model = await cocoSsd.load({base: 'lite_mobilenet_v2'}); }
+  if (!oriInit) {
+    oriInit = true;
+    try { if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') await DeviceOrientationEvent.requestPermission(); } catch (e) {}
+    window.addEventListener('deviceorientationabsolute', e => pushOri(e, true), true);
+    window.addEventListener('deviceorientation', e => pushOri(e, false), true);
+  }
+  toast('KI-Modell wird geladen (einmalig ~10 MB) …', 0);
+  try { await loadDetector(S.model); }
   catch (e) { toast('Modell konnte nicht geladen werden (Internet?): ' + e.message, 0); $('startBtn').disabled = false; return; }
 
   try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {}
   $('startBtn').style.display = 'none'; $('bar').style.display = 'flex';
-  running = true; toast('Tippe auf ein erkanntes Objekt, um es zu verfolgen', 0);
+  running = true; toast('Tippe auf ein erkanntes Objekt – oder auf eine freie Stelle für ein manuelles Ziel', 6000);
   schedule();
   setTimeout(() => { if (!oriBuf.length) toast('Keine Sensordaten! Bewegungssensoren erlauben (Chrome → Websiteeinstellungen).', 0); }, 2500);
 }
@@ -361,13 +694,16 @@ $('resetBtn').onclick = () => { target = null; hist = []; toast('Ziel gelöst');
 $('maxResetBtn').onclick = () => { maxKmh = 0; $('vmax').textContent = '–'; };
 $('settingsBtn').onclick = () => $('panel').classList.add('open');
 $('closeBtn').onclick = () => $('panel').classList.remove('open');
+$('zoom').oninput = e => setZoom(parseFloat(e.target.value));
 
-/* Einstellungs-Panel */
+/* =====================  Einstellungs-Panel  ===================== */
 const presetSel = $('preset');
-PRESETS.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; presetSel.appendChild(o); });
+PRESETS.forEach(p => presetSel.add(new Option(p.name, p.id)));
 function syncUI() {
   $('mode').value = S.mode; presetSel.value = S.preset; $('size').value = S.size; $('dim').value = S.dim;
-  $('hcam').value = S.hcam; $('fov').value = (+S.fov).toFixed(1); $('win').value = S.win; $('winv').textContent = (+S.win).toFixed(1);
+  $('hcam').value = S.hcam; $('fov').value = (+fovBase()).toFixed(1); $('win').value = S.win; $('winv').textContent = (+S.win).toFixed(1);
+  $('res').value = S.res; $('model').value = S.model; $('thr').value = S.thr; $('thrv').textContent = (+S.thr).toFixed(2);
+  $('tiles').checked = !!S.tiles; $('mpct').value = S.mpct; $('mpctv').textContent = S.mpct;
   $('sizeBox').style.display = S.mode === 'size' ? 'block' : 'none';
 }
 const changed = () => { hist = []; saveS(); syncUI(); };
@@ -376,15 +712,36 @@ presetSel.onchange = e => { S.preset = e.target.value; const p = PRESETS.find(x 
 $('size').onchange = e => { S.size = Math.max(0.05, parseFloat(e.target.value) || S.size); S.preset = 'custom'; changed(); };
 $('dim').onchange = e => { S.dim = e.target.value; S.preset = 'custom'; changed(); };
 $('hcam').onchange = e => { S.hcam = Math.max(0, parseFloat(e.target.value) || 0); changed(); };
-$('fov').onchange = e => { S.fov = Math.min(120, Math.max(20, parseFloat(e.target.value) || S.fov)); changed(); };
+$('fov').onchange = e => { S.fovBy[camKey()] = clamp(parseFloat(e.target.value) || fovBase(), 8, 130); changed(); };
+document.querySelectorAll('[data-fov]').forEach(b => b.onclick = () => { S.fovBy[camKey()] = parseFloat(b.dataset.fov); changed(); toast('Bildwinkel dieses Objektivs: ' + b.dataset.fov + '° (bei 1× Zoom)'); });
 $('win').oninput = e => { S.win = parseFloat(e.target.value); $('winv').textContent = S.win.toFixed(1); saveS(); };
+$('cam').onchange = async e => { S.cam = e.target.value; saveS(); if (running) await reopenCamera(); };
+$('res').onchange = async e => { S.res = e.target.value; saveS(); if (running) await reopenCamera(); };
+$('model').onchange = async e => {
+  S.model = e.target.value; saveS();
+  if (!running) return;
+  busy = true; toast('Modell wird gewechselt …', 0);
+  try { await loadDetector(S.model); toast('Modell: ' + MODELS[S.model].name); } catch (err) { toast('Modellwechsel fehlgeschlagen: ' + err.message, 0); }
+  busy = false;
+};
+$('thr').oninput = e => { S.thr = parseFloat(e.target.value); $('thrv').textContent = S.thr.toFixed(2); saveS(); };
+$('tiles').onchange = e => { S.tiles = e.target.checked; saveS(); };
+$('mpct').oninput = e => {
+  S.mpct = parseInt(e.target.value, 10); $('mpctv').textContent = S.mpct; saveS();
+  if (target && target.manual && vw) {
+    const s = Math.max(16, S.mpct / 100 * Math.max(vw, vh)), c = target.c;
+    target.box = [c[0] - s / 2, c[1] - s / 2, s, s]; target.needTpl = true; hist = [];
+  }
+};
 $('calBtn').onclick = () => {
   if (!target || !vw) { toast('Erst ein Objekt antippen und im Bild halten'); return; }
   const dist = parseFloat($('calDist').value);
   if (!(dist > 0)) { toast('Bitte Abstand in Metern eingeben'); return; }
   const px = S.dim === 'w' ? target.box[2] : target.box[3];
-  const f = px * dist / S.size, L = Math.max(vw, vh);
-  S.fov = deg(2 * Math.atan(L / 2 / f)); changed(); toast('Bildwinkel kalibriert: ' + S.fov.toFixed(1) + '°');
+  const fEff = px * dist / S.size, L = Math.max(vw, vh);
+  const tanEff = (L / 2) / fEff;                         // tan(Bildwinkel/2) bei aktuellem Zoom
+  S.fovBy[camKey()] = clamp(deg(2 * Math.atan(tanEff * zoomNow)), 8, 130);
+  changed(); toast('Bildwinkel bei 1× Zoom: ' + fovBase().toFixed(1) + '°');
 };
 syncUI();
 </script>
